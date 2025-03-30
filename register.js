@@ -9,7 +9,7 @@ const TOKEN_URL = 'https://pruebapilotouca.moodlecloud.com/mod/lti/token.php';
 const KEYSET_URL = 'https://pruebapilotouca.moodlecloud.com/mod/lti/certs.php';
 
 // Inicializar LTI con MongoDB
-lti.setup('LTIKEY123', {
+lti.setup('UNNXdVQg1lyCWDR', {
   url: process.env.MONGO_URL,
 });
 

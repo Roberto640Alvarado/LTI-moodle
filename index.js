@@ -7,7 +7,7 @@ const app = express();
 app.set('trust proxy', 1);
 
 // Configuración LTI mejorada
-lti.setup('LTIKEY123', {
+lti.setup('UNNXdVQg1lyCWDR', {
   url: process.env.MONGO_URL,
 }, {
   staticPath: path.join(__dirname, '/public'),
