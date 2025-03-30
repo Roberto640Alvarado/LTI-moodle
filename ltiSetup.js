@@ -20,7 +20,7 @@ const setupLTI = async (app) => {
       <html>
         <body style="font-family: sans-serif">
           <h1>Hola ${token.user}</h1>
-          <p><strong>Repositorio:</strong> ${repo}</p>
+          <p><strong>Repositorio:</strong> </p>
           <pre>${'No se encontró retroalimentación'}</pre>
         </body>
       </html>
