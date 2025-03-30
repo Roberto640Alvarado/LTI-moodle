@@ -37,7 +37,7 @@ lti.onConnect(async (token, req, res) => {
 
 // Integrar ltijs con Express (Render usará process.env.PORT)
 const start = async () => {
-  await lti.deploy({ app, serverless: false })
+  await lti.deploy({ app, serverless: true })
 
   const PORT = process.env.PORT || 4000
 
