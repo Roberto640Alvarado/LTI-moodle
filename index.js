@@ -6,35 +6,45 @@ const lti = require('ltijs').Provider;
 const app = express();
 app.set('trust proxy', 1);
 
-// Inicializar LTI con configuración mejorada
+// Inicializar LTI
 lti.setup('LTIKEY123', {
   url: process.env.MONGO_URL,
 }, {
   staticPath: path.join(__dirname, '/public'),
   cookies: {
-    secure: process.env.NODE_ENV === 'production', // Solo true en producción
+    secure: process.env.NODE_ENV === 'production', // True solo en producción
     sameSite: 'None'
   },
   devMode: process.env.NODE_ENV !== 'production'
 });
 
-// Middleware para depuración
+// Middleware para log de solicitudes
 app.use((req, res, next) => {
-  console.log('Solicitud recibida:', req.method, req.url);
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
   next();
 });
 
-// Ruta principal LTI - Versión mejorada con manejo de errores
+// Ruta GET / para manejar solicitudes directas
+app.get('/', (req, res) => {
+  if (!req.session || !req.session.lti) {
+    return res.status(403).send(`
+      <h1>Acceso no autorizado</h1>
+      <p>Debes acceder a esta herramienta a través de Moodle.</p>
+    `);
+  }
+  res.redirect('/lti');
+});
+
+// Ruta principal LTI
 lti.onConnect(async (token, req, res) => {
   try {
-    console.log('Token recibido:', res.locals.token); // Depuración
-    
     const idToken = res.locals.token;
+    console.log('Datos recibidos de LTI:', JSON.stringify(idToken, null, 2)); // Depuración
+    
     if (!idToken || !idToken.userInfo) {
       throw new Error('No se recibieron datos de usuario');
     }
 
-    // Datos con valores por defecto para evitar errores
     const nombre = idToken.userInfo.name || 
                   [idToken.userInfo.given_name, idToken.userInfo.family_name].filter(Boolean).join(' ') || 
                   'Usuario';
@@ -43,53 +53,52 @@ lti.onConnect(async (token, req, res) => {
     const curso = idToken.platformContext?.title || 'Curso no disponible';
     const tarea = idToken.resourceLink?.title || 'Tarea no disponible';
 
-    // Respuesta mejorada
-    return res.send(`
+    // Guardar datos en sesión
+    req.session.lti = {
+      user: { nombre, email, rol },
+      context: { curso, tarea }
+    };
+
+    res.send(`
       <!DOCTYPE html>
       <html>
       <head>
-        <title>Información de Usuario</title>
+        <title>Feedback Triángulo</title>
         <style>
           body { font-family: Arial, sans-serif; padding: 20px; }
           h1 { color: #2c3e50; }
-          .info-container { 
-            background: #f8f9fa; 
-            padding: 20px; 
-            border-radius: 8px;
-            margin-top: 20px;
-          }
+          .info { background: #f8f9fa; padding: 15px; border-radius: 5px; }
         </style>
       </head>
       <body>
-        <h1>Bienvenido al Sistema LTI</h1>
-        <div class="info-container">
+        <h1>Bienvenido al Feedback Triángulo</h1>
+        <div class="info">
           <h2>Hola, ${nombre}!</h2>
           <p><strong>Rol:</strong> ${rol}</p>
           <p><strong>Correo:</strong> ${email}</p>
           <p><strong>Curso:</strong> ${curso}</p>
           <p><strong>Tarea:</strong> ${tarea}</p>
-          <p><small>ID de usuario: ${idToken.userInfo.id || 'N/A'}</small></p>
         </div>
       </body>
       </html>
     `);
   } catch (error) {
     console.error('Error en onConnect:', error);
-    return res.status(500).send(`
+    res.status(500).send(`
       <h1>Error</h1>
-      <p>No se pudieron obtener los datos del usuario.</p>
+      <p>No se pudieron cargar los datos del usuario.</p>
       <p>${error.message}</p>
     `);
   }
 });
 
-// Ruta adicional para manejar posibles solicitudes a /login
-app.post('/login', (req, res) => {
-  console.log('Intento de login detectado, redirigiendo...');
-  res.redirect('/');
+// Manejador de errores
+app.use((err, req, res, next) => {
+  console.error('Error global:', err);
+  res.status(500).send('Error interno del servidor');
 });
 
-// Iniciar servidor con manejo de errores
+// Iniciar servidor
 const start = async () => {
   try {
     await lti.deploy({ app, serverless: true });
@@ -97,7 +106,7 @@ const start = async () => {
     const PORT = process.env.PORT || 4000;
     app.listen(PORT, () => {
       console.log(`🚀 Servidor LTI activo en el puerto ${PORT}`);
-      console.log(`🔑 MongoDB`);
+      console.log(`🗄️ MongoDB`);
     });
   } catch (error) {
     console.error('Error al iniciar el servidor:', error);
