@@ -24,9 +24,11 @@ lti.onConnect(async (token, req, res) => {
   const rol = idToken.userInfo.roles?.[0] || 'Desconocido'
   const curso = idToken.platformContext.title
   const tarea = idToken.resourceLink.title
+  const email = idToken.userInfo.email
 
   return res.send(`
     <h1>Hola, ${nombre}!</h1>
+    <p>Correo: ${email}</p>
     <p>Tu rol es: ${rol}</p>
     <p>Estás en el curso: ${curso}</p>
     <p>Entraste desde la tarea: ${tarea}</p>
