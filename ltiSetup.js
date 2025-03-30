@@ -9,10 +9,11 @@ const setupLTI = async (app) => {
     {
       appRoute: '/',
       loginRoute: '/login',
-      cookies: { secure: false, sameSite: '' },
-      devMode: true
+      cookies: { secure: true, sameSite: 'None' },
+      devMode: false
     }
   )
+  
 
   lti.onConnect(async (token, req, res) => {
 
