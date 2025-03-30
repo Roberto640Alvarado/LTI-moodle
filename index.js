@@ -13,11 +13,6 @@ app.use(express.json({ limit: '10mb' }));
 // Configuración LTI mejorada
 lti.setup('UHNXdVQg11yCMDR', {
   url: process.env.MONGO_URL,
-  connection: {
-    db: { 
-      sslValidate: false
-    }
-  }
 }, {
   staticPath: path.join(__dirname, '/public'),
   cookies: {
