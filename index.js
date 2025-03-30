@@ -14,11 +14,6 @@ app.use(bodyParser.json());
 // Configuración LTI mejorada
 lti.setup('UNNXdVQg1lyCWDR', {  // Usando el client_id del error
   url: process.env.MONGO_URL,
-  connection: {
-    db: { 
-      sslValidate: false
-    }
-  }
 }, {
   staticPath: path.join(__dirname, '/public'),
   cookies: {
