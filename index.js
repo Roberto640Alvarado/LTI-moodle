@@ -2,40 +2,54 @@ require('dotenv').config();
 const express = require('express');
 const path = require('path');
 const lti = require('ltijs').Provider;
+const bodyParser = require('body-parser');
 
 const app = express();
 app.set('trust proxy', 1);
 
+// Configuración de middleware para parsear el cuerpo de las solicitudes
+app.use(bodyParser.urlencoded({ extended: true }));
+app.use(bodyParser.json());
+
 // Configuración LTI mejorada
-lti.setup(process.env.LTI_KEY || 'UHNXdVQg11yCMDR', {
+lti.setup('UNNXdVQg1lyCWDR', {  // Usando el client_id del error
   url: process.env.MONGO_URL,
+  connection: {
+    db: { 
+      sslValidate: false
+    }
+  }
 }, {
   staticPath: path.join(__dirname, '/public'),
   cookies: {
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'None'
   },
-  devMode: process.env.NODE_ENV !== 'production',
-  tokenMaxAge: 3600 // Tiempo de vida del token en segundos
+  devMode: process.env.NODE_ENV !== 'production'
 });
 
 // Middleware para logs detallados
 app.use((req, res, next) => {
   console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
   console.log('Headers:', req.headers);
+  console.log('Body:', req.body);
   next();
+});
+
+// Ruta POST /login - Endpoint específico para Moodle
+app.post('/login', (req, res) => {
+  console.log('Datos recibidos en /login:', req.body);
+  
+  // Redirigir a la ruta LTI principal manteniendo el método POST
+  res.redirect(307, '/lti');
 });
 
 // Ruta principal LTI
 lti.onConnect(async (token, req, res) => {
   try {
-    console.log('Token recibido:', res.locals.token);
-    
-    if (!res.locals.token) {
-      throw new Error('No se recibió token válido');
-    }
-
     const idToken = res.locals.token;
+    console.log('Token LTI recibido:', idToken);
+
     const userData = {
       nombre: idToken.userInfo?.name || 'Usuario',
       email: idToken.userInfo?.email || 'No proporcionado',
@@ -68,15 +82,14 @@ lti.onConnect(async (token, req, res) => {
     `);
   } catch (error) {
     console.error('Error en LTI:', error);
-    res.status(401).send(`
-      <h1>Error de autenticación</h1>
-      <p>${error.message}</p>
-      <p>Por favor, inténtalo de nuevo o contacta al administrador.</p>
-    `);
+    res.status(500).send('Error al cargar la herramienta');
   }
 });
 
-// Manejador de errores global
+// Configuración de rutas LTI
+app.use('/lti', lti.app);
+
+// Manejador de errores
 app.use((err, req, res, next) => {
   console.error('Error global:', err);
   res.status(500).send('Error interno del servidor');
@@ -90,7 +103,9 @@ const start = async () => {
     const PORT = process.env.PORT || 4000;
     app.listen(PORT, () => {
       console.log(`🚀 Servidor LTI activo en puerto ${PORT}`);
-      console.log(`🔑 LTI Key: ${process.env.LTI_KEY || 'UHNXdVQg11yCMDR'}`);
+      console.log('Endpoints configurados:');
+      console.log('POST /login → Redirige a /lti');
+      console.log('POST /lti → Procesa la conexión LTI');
     });
   } catch (error) {
     console.error('Error al iniciar:', error);
