@@ -5,7 +5,7 @@ const lti = require('ltijs').Provider
 
 const app = express()
 
-// Inicializar ltijs con Mongo
+// Inicializar LTI
 lti.setup('LTIKEY123', {
   url: process.env.MONGO_URL
 }, {
@@ -16,12 +16,12 @@ lti.setup('LTIKEY123', {
   }
 })
 
-// Ruta al conectarse desde Moodle
+// Ruta principal LTI
 lti.onConnect(async (token, req, res) => {
   const idToken = res.locals.token
   const nombre = idToken.userInfo.name
-  const rol = idToken.userInfo.roles?.[0] || 'Desconocido'
   const email = idToken.userInfo.email
+  const rol = idToken.userInfo.roles?.[0] || 'Desconocido'
   const curso = idToken.platformContext.title
   const tarea = idToken.resourceLink.title
 
@@ -34,14 +34,15 @@ lti.onConnect(async (token, req, res) => {
   `)
 })
 
-// Integrar Express y ltijs
-const setup = async () => {
-  await lti.deploy({ serverless: false, app })
+// Integrar ltijs con Express (Render usará process.env.PORT)
+const start = async () => {
+  await lti.deploy({ app, serverless: false })
 
-  const PORT = 4000
+  const PORT = process.env.PORT || 4000
+
   app.listen(PORT, () => {
-    console.log(`🚀 Servidor LTI escuchando en el puerto ${PORT}`)
+    console.log(`🚀 Servidor LTI activo en el puerto ${PORT}`)
   })
 }
 
-setup()
+start()
