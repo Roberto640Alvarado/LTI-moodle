@@ -2,18 +2,22 @@ require('dotenv').config();
 const express = require('express');
 const path = require('path');
 const lti = require('ltijs').Provider;
-const bodyParser = require('body-parser');
 
 const app = express();
 app.set('trust proxy', 1);
 
-// Configuración de middleware para parsear el cuerpo de las solicitudes
-app.use(bodyParser.urlencoded({ extended: true }));
-app.use(bodyParser.json());
+// Configuración crítica para procesar solicitudes POST
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(express.json({ limit: '10mb' }));
 
 // Configuración LTI mejorada
-lti.setup('UNNXdVQg1lyCWDR', {  // Usando el client_id del error
+lti.setup('UHNXdVQg11yCMDR', {
   url: process.env.MONGO_URL,
+  connection: {
+    db: { 
+      sslValidate: false
+    }
+  }
 }, {
   staticPath: path.join(__dirname, '/public'),
   cookies: {
@@ -26,25 +30,38 @@ lti.setup('UNNXdVQg1lyCWDR', {  // Usando el client_id del error
 // Middleware para logs detallados
 app.use((req, res, next) => {
   console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
-  console.log('Headers:', req.headers);
-  console.log('Body:', req.body);
+  console.log('Headers:', JSON.stringify(req.headers, null, 2));
   next();
 });
 
-// Ruta POST /login - Endpoint específico para Moodle
+// Ruta POST /login - Manejo mejorado
 app.post('/login', (req, res) => {
-  console.log('Datos recibidos en /login:', req.body);
-  
-  // Redirigir a la ruta LTI principal manteniendo el método POST
-  res.redirect(307, '/lti');
+  try {
+    console.log('Datos recibidos en /login:', req.body);
+    
+    // Validación básica de los parámetros LTI
+    if (!req.body.iss || !req.body.client_id) {
+      return res.status(400).send('Parámetros LTI faltantes');
+    }
+
+    // Redirigir a la ruta LTI principal
+    return res.redirect(307, '/lti');
+  } catch (error) {
+    console.error('Error en /login:', error);
+    return res.status(500).send('Error interno del servidor');
+  }
 });
 
-// Ruta principal LTI
+// Ruta principal LTI con manejo de errores robusto
 lti.onConnect(async (token, req, res) => {
   try {
-    const idToken = res.locals.token;
-    console.log('Token LTI recibido:', idToken);
+    console.log('Token recibido:', res.locals.token);
+    
+    if (!res.locals.token) {
+      throw new Error('No se recibió token válido');
+    }
 
+    const idToken = res.locals.token;
     const userData = {
       nombre: idToken.userInfo?.name || 'Usuario',
       email: idToken.userInfo?.email || 'No proporcionado',
@@ -53,7 +70,7 @@ lti.onConnect(async (token, req, res) => {
       tarea: idToken.resourceLink?.title || 'Tarea no disponible'
     };
 
-    res.send(`
+    return res.send(`
       <!DOCTYPE html>
       <html>
       <head>
@@ -77,20 +94,36 @@ lti.onConnect(async (token, req, res) => {
     `);
   } catch (error) {
     console.error('Error en LTI:', error);
-    res.status(500).send('Error al cargar la herramienta');
+    return res.status(500).send(`
+      <h1>Error en la herramienta LTI</h1>
+      <p>Por favor, inténtalo de nuevo o contacta al administrador.</p>
+    `);
   }
 });
 
 // Configuración de rutas LTI
 app.use('/lti', lti.app);
 
-// Manejador de errores
-app.use((err, req, res, next) => {
-  console.error('Error global:', err);
-  res.status(500).send('Error interno del servidor');
+// Ruta para el keyset JWK
+app.get('/.well-known/jwks.json', (req, res) => {
+  try {
+    return res.json(lti.provider.keyset);
+  } catch (error) {
+    console.error('Error al generar JWKS:', error);
+    return res.status(500).json({ error: 'Error al generar keyset' });
+  }
 });
 
-// Iniciar servidor
+// Manejador de errores global mejorado
+app.use((err, req, res, next) => {
+  console.error('Error global:', err);
+  return res.status(500).send(`
+    <h1>Error interno del servidor</h1>
+    <p>Por favor, inténtalo de nuevo más tarde.</p>
+  `);
+});
+
+// Iniciar servidor con validación
 const start = async () => {
   try {
     await lti.deploy({ app, serverless: true });
@@ -98,12 +131,13 @@ const start = async () => {
     const PORT = process.env.PORT || 4000;
     app.listen(PORT, () => {
       console.log(`🚀 Servidor LTI activo en puerto ${PORT}`);
-      console.log('Endpoints configurados:');
-      console.log('POST /login → Redirige a /lti');
-      console.log('POST /lti → Procesa la conexión LTI');
+      console.log('🔑 Client ID:', 'UHNXdVQg11yCMDR');
+      console.log('🔗 Initiate login URL:', 'https://lti-moodle.onrender.com/login');
+      console.log('🔄 Redirection URI:', 'https://lti-moodle.onrender.com/lti');
+      console.log('🔐 JWKS Endpoint:', 'https://lti-moodle.onrender.com/.well-known/jwks.json');
     });
   } catch (error) {
-    console.error('Error al iniciar:', error);
+    console.error('Error al iniciar el servidor:', error);
     process.exit(1);
   }
 };
