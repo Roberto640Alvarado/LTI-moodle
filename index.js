@@ -4,6 +4,7 @@ const path = require('path')
 const lti = require('ltijs').Provider
 
 const app = express()
+app.set('trust proxy', 1)
 
 // Inicializar LTI
 lti.setup('LTIKEY123', {
