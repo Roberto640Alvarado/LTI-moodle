@@ -7,7 +7,7 @@ const app = express();
 app.set('trust proxy', 1);
 
 // Configuración LTI mejorada
-lti.setup('UNNXdVQg1lyCWDR', {
+lti.setup(process.env.LTI_KEY || 'UHNXdVQg11yCMDR', {
   url: process.env.MONGO_URL,
 }, {
   staticPath: path.join(__dirname, '/public'),
@@ -15,31 +15,31 @@ lti.setup('UNNXdVQg1lyCWDR', {
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'None'
   },
-  devMode: process.env.NODE_ENV !== 'production'
+  devMode: process.env.NODE_ENV !== 'production',
+  tokenMaxAge: 3600 // Tiempo de vida del token en segundos
 });
 
-// Middleware para logs
+// Middleware para logs detallados
 app.use((req, res, next) => {
   console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
+  console.log('Headers:', req.headers);
   next();
-});
-
-// Ruta POST /login - Compatibilidad con Moodle
-app.post('/login', (req, res) => {
-  console.log('Solicitud POST a /login recibida, redirigiendo a /lti');
-  res.redirect(307, '/lti'); // 307 preserva el método POST
 });
 
 // Ruta principal LTI
 lti.onConnect(async (token, req, res) => {
   try {
-    const idToken = res.locals.token;
-    console.log('Datos LTI recibidos:', idToken);
+    console.log('Token recibido:', res.locals.token);
+    
+    if (!res.locals.token) {
+      throw new Error('No se recibió token válido');
+    }
 
+    const idToken = res.locals.token;
     const userData = {
-      nombre: idToken.userInfo.name || 'Usuario',
-      email: idToken.userInfo.email || 'No proporcionado',
-      rol: idToken.userInfo.roles?.[0] || 'Desconocido',
+      nombre: idToken.userInfo?.name || 'Usuario',
+      email: idToken.userInfo?.email || 'No proporcionado',
+      rol: idToken.userInfo?.roles?.[0] || 'Desconocido',
       curso: idToken.platformContext?.title || 'Curso no disponible',
       tarea: idToken.resourceLink?.title || 'Tarea no disponible'
     };
@@ -52,12 +52,12 @@ lti.onConnect(async (token, req, res) => {
         <style>
           body { font-family: Arial, sans-serif; padding: 20px; }
           h1 { color: #2c3e50; }
-          .user-info { background: #f8f9fa; padding: 20px; border-radius: 5px; }
+          .info { background: #f8f9fa; padding: 20px; border-radius: 5px; }
         </style>
       </head>
       <body>
         <h1>Bienvenido, ${userData.nombre}!</h1>
-        <div class="user-info">
+        <div class="info">
           <p><strong>Rol:</strong> ${userData.rol}</p>
           <p><strong>Email:</strong> ${userData.email}</p>
           <p><strong>Curso:</strong> ${userData.curso}</p>
@@ -68,12 +68,19 @@ lti.onConnect(async (token, req, res) => {
     `);
   } catch (error) {
     console.error('Error en LTI:', error);
-    res.status(500).send('Error al cargar la herramienta');
+    res.status(401).send(`
+      <h1>Error de autenticación</h1>
+      <p>${error.message}</p>
+      <p>Por favor, inténtalo de nuevo o contacta al administrador.</p>
+    `);
   }
 });
 
-// Configuración de rutas LTI
-app.use('/lti', lti.app);
+// Manejador de errores global
+app.use((err, req, res, next) => {
+  console.error('Error global:', err);
+  res.status(500).send('Error interno del servidor');
+});
 
 // Iniciar servidor
 const start = async () => {
@@ -82,10 +89,8 @@ const start = async () => {
 
     const PORT = process.env.PORT || 4000;
     app.listen(PORT, () => {
-      console.log(`Servidor LTI activo en puerto ${PORT}`);
-      console.log('Endpoints disponibles:');
-      console.log(`- POST /login (para Moodle)`);
-      console.log(`- POST /lti (endpoint principal LTI)`);
+      console.log(`🚀 Servidor LTI activo en puerto ${PORT}`);
+      console.log(`🔑 LTI Key: ${process.env.LTI_KEY || 'UHNXdVQg11yCMDR'}`);
     });
   } catch (error) {
     console.error('Error al iniciar:', error);
