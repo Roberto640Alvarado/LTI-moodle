@@ -6,7 +6,7 @@ const lti = require('ltijs').Provider;
 const app = express();
 app.set('trust proxy', 1);
 
-// Configuración LTI
+// Configuración LTI mejorada
 lti.setup('LTIKEY123', {
   url: process.env.MONGO_URL,
 }, {
@@ -18,32 +18,19 @@ lti.setup('LTIKEY123', {
   devMode: process.env.NODE_ENV !== 'production'
 });
 
-// Middleware para log de solicitudes
+// Middleware para logs
 app.use((req, res, next) => {
   console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
   next();
 });
 
-// Ruta GET /lti (para pruebas y redirección)
-app.get('/lti', (req, res) => {
-  if (req.session?.lti) {
-    // Si ya tiene sesión LTI, mostrar contenido
-    const { nombre, email, rol, curso, tarea } = req.session.lti;
-    return res.send(`
-      <h1>Bienvenido de nuevo, ${nombre}!</h1>
-      <!-- Mostrar información del usuario -->
-    `);
-  }
-  res.status(400).send('Accede a esta herramienta desde Moodle');
+// Ruta POST /login - Compatibilidad con Moodle
+app.post('/login', (req, res) => {
+  console.log('Solicitud POST a /login recibida, redirigiendo a /lti');
+  res.redirect(307, '/lti'); // 307 preserva el método POST
 });
 
-// Ruta POST /lti (la que usa realmente Moodle)
-app.post('/lti', (req, res, next) => {
-  // Dejamos que ltijs maneje la autenticación LTI
-  next();
-}, lti.app);
-
-// Handler principal LTI
+// Ruta principal LTI
 lti.onConnect(async (token, req, res) => {
   try {
     const idToken = res.locals.token;
@@ -57,18 +44,25 @@ lti.onConnect(async (token, req, res) => {
       tarea: idToken.resourceLink?.title || 'Tarea no disponible'
     };
 
-    // Guardar en sesión
-    req.session.lti = userData;
-
     res.send(`
       <!DOCTYPE html>
       <html>
       <head>
         <title>Herramienta LTI</title>
+        <style>
+          body { font-family: Arial, sans-serif; padding: 20px; }
+          h1 { color: #2c3e50; }
+          .user-info { background: #f8f9fa; padding: 20px; border-radius: 5px; }
+        </style>
       </head>
       <body>
         <h1>Bienvenido, ${userData.nombre}!</h1>
-        <!-- Mostrar información del usuario -->
+        <div class="user-info">
+          <p><strong>Rol:</strong> ${userData.rol}</p>
+          <p><strong>Email:</strong> ${userData.email}</p>
+          <p><strong>Curso:</strong> ${userData.curso}</p>
+          <p><strong>Tarea:</strong> ${userData.tarea}</p>
+        </div>
       </body>
       </html>
     `);
@@ -78,6 +72,9 @@ lti.onConnect(async (token, req, res) => {
   }
 });
 
+// Configuración de rutas LTI
+app.use('/lti', lti.app);
+
 // Iniciar servidor
 const start = async () => {
   try {
@@ -86,6 +83,9 @@ const start = async () => {
     const PORT = process.env.PORT || 4000;
     app.listen(PORT, () => {
       console.log(`Servidor LTI activo en puerto ${PORT}`);
+      console.log('Endpoints disponibles:');
+      console.log(`- POST /login (para Moodle)`);
+      console.log(`- POST /lti (endpoint principal LTI)`);
     });
   } catch (error) {
     console.error('Error al iniciar:', error);
