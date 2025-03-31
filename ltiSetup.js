@@ -9,8 +9,9 @@ const setupLTI = async (app) => {
     {
       appRoute: '/',
       loginRoute: '/login',
-      cookies: { secure: false, sameSite: '' },
-      devMode: true
+      cookies: { secure: true, sameSite: 'None' },
+      devMode: false
+
     }
   )
   
@@ -87,7 +88,7 @@ const setupLTI = async (app) => {
   })
 
    //await lti.deploy({ serverless: true, app })
-   await lti.deploy({ port: 3005 })
+   await lti.deploy({ serverless: true, app })
 
    const platformConfig = {
      url: 'https://pruebapilotouca.moodlecloud.com',
