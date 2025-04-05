@@ -1,10 +1,10 @@
-const dotenv = require('dotenv')
-const mongoose = require('mongoose');
-const marked = require('marked');
-const Feedback = require('./models/Feedback'); //
-const lti = require('ltijs').Provider
+const dotenv = require("dotenv");
+const mongoose = require("mongoose");
+const marked = require("marked");
+const Feedback = require("./models/Feedback"); //
+const lti = require("ltijs").Provider;
 
-dotenv.config()
+dotenv.config();
 
 const setupLTI = async (app) => {
   await lti.setup(process.env.LTI_KEY,
@@ -12,44 +12,93 @@ const setupLTI = async (app) => {
     {
       appRoute: '/',
       loginRoute: '/login',
-      cookies: { secure: false, sameSite: '' },
+      cookies: { secure: false, sameSite: 'None' },
       devMode: true
     }
   )
 
   await mongoose.connect(process.env.FEEDBACK_DB_URL, {
     useNewUrlParser: true,
-    useUnifiedTopology: true
+    useUnifiedTopology: true,
   });
-  console.log('✅ Conectado a MongoDB para retroalimentaciones');
-  
-  
+  console.log("✅ Conectado a MongoDB para retroalimentaciones");
+
 
   lti.onConnect(async (token, req, res) => {
-    const name = token.userInfo?.name || 'Nombre no disponible'
-    const email = token.userInfo?.email || 'Correo no disponible'
-    const roles = token.platformContext?.roles || []
-    const course = token.platformContext?.context?.title || 'Curso desconocido'
-    const assignment = token.platformContext?.resource?.title || 'Actividad desconocida'
-
+    const name = token.userInfo?.name || "Nombre no disponible";
+    const email = token.userInfo?.email || "Correo no disponible";
+    const roles = token.platformContext?.roles || [];
+    const course = token.platformContext?.context?.title || "Curso desconocido";
+    const assignment =
+      token.platformContext?.resource?.title || "Actividad desconocida";
+      console.log("Token: ", token)
     const feedbackData = await Feedback.findOne({ email, task: assignment });
 
     let feedbackHTML = `<p><em>No se encontró retroalimentación para esta tarea.</em></p>`;
     let gradeHTML = `<p><em>No calificado aún.</em></p>`;
 
     // Roles legibles
-    const readableRoles = roles.map(r => {
-      if (r.includes('#Instructor')) return 'Instructor'
-      if (r.includes('#Learner')) return 'Estudiante'
-      if (r.includes('#Administrator')) return 'Administrador'
-      return r
-    }).join(', ')
+    const readableRoles = roles
+      .map((r) => {
+        if (r.includes("#Instructor")) return "Instructor";
+        if (r.includes("#Learner")) return "Estudiante";
+        if (r.includes("#Administrator")) return "Administrador";
+        return r;
+      })
+      .join(", ");
 
     if (feedbackData) {
-      feedbackHTML = marked.parse(feedbackData.feedback || '');
-      gradeHTML = `<p><strong>🎯 Nota:</strong> ${feedbackData.grade || 'Sin nota'}</p>`;
+      feedbackHTML = marked.parse(feedbackData.feedback || "");
+      gradeHTML = `<p><strong>🎯 Nota:</strong> ${
+        feedbackData.grade || "Sin nota"
+      }</p>`;
     }
 
+    //Enviar calificación a Moodle si hay nota
+    if (feedbackData && feedbackData.grade) {
+      try {
+        const numericGrade = parseFloat(feedbackData.grade.split("/")[0]);
+    
+        const score = {
+          userId: token.user,
+          scoreGiven: numericGrade,
+          scoreMaximum: 10,
+          activityProgress: 'Completed',
+          gradingProgress: 'FullyGraded'
+        };
+    
+        //Paso 1: obtener el lineitem ID
+        let lineItemId = token.platformContext.endpoint.lineitem;
+    
+        if (!lineItemId) {
+          const response = await lti.Grade.getLineItems(token, { resourceLinkId: true });
+          const lineItems = response?.lineItems || [];
+    
+          if (lineItems.length === 0) {
+            //Crear line item si no hay ninguno
+            console.log('🛠️ Creando nuevo line item...');
+            const newLineItem = {
+              scoreMaximum: 10,
+              label: 'Nota automática',
+              tag: 'autograde',
+              resourceLinkId: token.platformContext.resource.id
+            };
+            const created = await lti.Grade.createLineItem(token, newLineItem);
+            lineItemId = created.id;
+          } else {
+            lineItemId = lineItems[0].id;
+          }
+        }
+    
+        //Paso 2: enviar la nota usando submitScore
+        await lti.Grade.submitScore(token, lineItemId, score);
+        console.log(`✅ Calificación enviada a Moodle: ${numericGrade}/10`);
+    
+      } catch (err) {
+        console.error('❌ Error al enviar calificación a Moodle:', err.message);
+      }
+    }
+    
     res.send(`
       <html>
         <head>
@@ -108,30 +157,28 @@ const setupLTI = async (app) => {
         </body>
       </html>
     `);
-  })
+  });
 
-   //await lti.deploy({ serverless: true, app })
-   await lti.deploy({ port: 3005 })
+  //await lti.deploy({ serverless: true, app })
+  await lti.deploy({ port: 3005 });
 
-   const platformConfig = {
-     url: 'https://pruebapilotouca.moodlecloud.com',
-     name: 'MoodleCloudUCA',
-     clientId: 'UHNXdVQg11yCMDR',
-     authenticationEndpoint: 'https://pruebapilotouca.moodlecloud.com/mod/lti/auth.php',
-     accesstokenEndpoint: 'https://pruebapilotouca.moodlecloud.com/mod/lti/token.php',
-     authConfig: {
-       method: 'JWK_SET',
-       key: 'https://pruebapilotouca.moodlecloud.com/mod/lti/certs.php' // ✅ CORRECTO
-     }
-   }
-   
- 
-   await lti.registerPlatform(platformConfig) 
- 
-   console.log('✅ Plataforma registrada correctamente:', platformConfig.name)
- }
- 
- module.exports = setupLTI
- 
- 
- 
+  const platformConfig = {
+    url: "https://pruebapilotouca.moodlecloud.com",
+    name: "MoodleCloudUCA",
+    clientId: "UHNXdVQg11yCMDR",
+    authenticationEndpoint:
+      "https://pruebapilotouca.moodlecloud.com/mod/lti/auth.php",
+    accesstokenEndpoint:
+      "https://pruebapilotouca.moodlecloud.com/mod/lti/token.php",
+    authConfig: {
+      method: "JWK_SET",
+      key: "https://pruebapilotouca.moodlecloud.com/mod/lti/certs.php", // ✅ CORRECTO
+    },
+  };
+
+  await lti.registerPlatform(platformConfig);
+
+  console.log("✅ Plataforma registrada correctamente:", platformConfig.name);
+};
+
+module.exports = setupLTI;
