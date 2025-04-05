@@ -1,4 +1,7 @@
 const dotenv = require('dotenv')
+const mongoose = require('mongoose');
+const marked = require('marked');
+const Feedback = require('./models/Feedback'); //
 const lti = require('ltijs').Provider
 
 dotenv.config()
@@ -13,6 +16,13 @@ const setupLTI = async (app) => {
       devMode: true
     }
   )
+
+  await mongoose.connect(process.env.FEEDBACK_DB_URL, {
+    useNewUrlParser: true,
+    useUnifiedTopology: true
+  });
+  console.log('✅ Conectado a MongoDB para retroalimentaciones');
+  
   
 
   lti.onConnect(async (token, req, res) => {
@@ -22,6 +32,11 @@ const setupLTI = async (app) => {
     const course = token.platformContext?.context?.title || 'Curso desconocido'
     const assignment = token.platformContext?.resource?.title || 'Actividad desconocida'
 
+    const feedbackData = await Feedback.findOne({ email, task: assignment });
+
+    let feedbackHTML = `<p><em>No se encontró retroalimentación para esta tarea.</em></p>`;
+    let gradeHTML = `<p><em>No calificado aún.</em></p>`;
+
     // Roles legibles
     const readableRoles = roles.map(r => {
       if (r.includes('#Instructor')) return 'Instructor'
@@ -30,60 +45,69 @@ const setupLTI = async (app) => {
       return r
     }).join(', ')
 
+    if (feedbackData) {
+      feedbackHTML = marked.parse(feedbackData.feedback || '');
+      gradeHTML = `<p><strong>🎯 Nota:</strong> ${feedbackData.grade || 'Sin nota'}</p>`;
+    }
+
     res.send(`
       <html>
-  <head>
-    <title>Datos del visitante</title>
-    <style>
-      body {
-        font-family: sans-serif;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        height: 100vh;
-        background-color: #f4f4f4;
-        margin: 0;
-      }
-
-      .container {
-        background-color: white;
-        padding: 2rem 3rem;
-        border-radius: 12px;
-        box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-        max-width: 600px;
-        width: 100%;
-      }
-
-      h1 {
-        text-align: center;
-        color: #333;
-      }
-
-      .info p {
-        font-size: 1.1rem;
-        margin: 0.7rem 0;
-      }
-
-      .info strong {
-        color: #444;
-      }
-    </style>
-  </head>
-  <body>
-    <div class="container">
-      <h1>📋 Datos del visitante</h1>
-      <div class="info">
-        <p><strong>👤 Nombre:</strong> ${name}</p>
-        <p><strong>📧 Correo:</strong> ${email}</p>
-        <p><strong>🧑‍💼 Roles:</strong> ${readableRoles}</p>
-        <p><strong>🏫 Curso:</strong> ${course}</p>
-        <p><strong>📝 Tarea:</strong> ${assignment}</p>
-      </div>
-    </div>
-  </body>
-</html>
-
-    `)
+        <head>
+          <title>Retroalimentación</title>
+          <style>
+            body {
+              font-family: sans-serif;
+              background-color: #f4f4f4;
+              margin: 0;
+              padding: 2rem;
+              display: flex;
+              justify-content: center;
+            }
+            .container {
+              background: #fff;
+              padding: 2rem 3rem;
+              border-radius: 12px;
+              box-shadow: 0 0 12px rgba(0,0,0,0.1);
+              max-width: 800px;
+              width: 100%;
+            }
+            h1 {
+              text-align: center;
+              color: #333;
+            }
+            .markdown-body p {
+              margin: 0.5rem 0;
+            }
+            .markdown-body pre {
+              background: #eee;
+              padding: 0.75rem;
+              border-radius: 5px;
+              overflow-x: auto;
+            }
+            .markdown-body code {
+              background: #eee;
+              padding: 0.2rem 0.4rem;
+              border-radius: 4px;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <h1>📋 Retroalimentación</h1>
+            <p><strong>👤 Nombre:</strong> ${name}</p>
+            <p><strong>📧 Correo:</strong> ${email}</p>
+            <p><strong>📝 Actividad:</strong> ${assignment}</p>
+            <p><strong>🏫 Curso:</strong> ${course}</p>
+            <p><strong>🧑‍💼 Rol:</strong> ${readableRoles}</p>
+            ${gradeHTML}
+            <hr/>
+            <div class="markdown-body">
+              ${feedbackHTML}
+            </div>
+          </div>
+        </body>
+      </html>
+    `);
   })
 
    //await lti.deploy({ serverless: true, app })
